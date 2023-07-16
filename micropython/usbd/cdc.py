@@ -44,13 +44,14 @@ class CDCControlInterface(USBInterface):
     def __init__(self, interface_str):
         super().__init__(_CDC_ITF_CONTROL_CLASS, _CDC_ITF_CONTROL_SUBCLASS,
                          _CDC_ITF_CONTROL_PROT)
+        self.ep_in = None
 
     def get_itf_descriptor(self, num_eps, itf_idx, str_idx):
         # CDC needs a Interface Association Descriptor (IAD)
         # first interface is zero, two interfaces in total
         desc = ustruct.pack("<BBBBBBBB", 8, _ITF_ASSOCIATION_DESC_TYPE, itf_idx, 2,
                             _CDC_ITF_CONTROL_CLASS, _CDC_ITF_CONTROL_SUBCLASS,
-                            _CDC_ITF_CONTROL_PROT, 0)  # "IAD"
+                            _CDC_ITF_CONTROL_PROT, 4)  # "IAD"
 
         itf, strs = super().get_itf_descriptor(num_eps, itf_idx, str_idx)
         desc += itf
@@ -59,12 +60,13 @@ class CDCControlInterface(USBInterface):
         desc += ustruct.pack("<BBBH", 5, _CS_DESC_TYPE, 0, 0x0120)  # "Header"
         desc += ustruct.pack("<BBBBB", 5, _CS_DESC_TYPE, 1, 0, 1)   # "Call Management"
         desc += ustruct.pack("<BBBB", 4, _CS_DESC_TYPE, 2, 2)  # "Abstract Control"
-        desc += ustruct.pack("<BBBH", 5, _CS_DESC_TYPE, 6, itf_idx, 1)  # "Union"
+        desc += ustruct.pack("<BBBBB", 5, _CS_DESC_TYPE, 6, itf_idx, itf_idx+1)  # "Union"
         return desc, strs
 
     def get_endpoint_descriptors(self, ep_addr, str_idx):
-        self.ep_in = endpoint_descriptor((ep_addr + 1) | EP_IN_FLAG, "interrupt", 8, 16)
-        return (self.ep_in, [], ((ep_addr+1) | EP_IN_FLAG,))
+        self.ep_in = (ep_addr) | EP_IN_FLAG
+        desc = endpoint_descriptor(self.ep_in, "interrupt", 8, 16)
+        return (desc, [], (self.ep_in,))
 
 
 class CDCDataInterface(USBInterface):
@@ -78,18 +80,20 @@ class CDCDataInterface(USBInterface):
         self.rx_done = False
         self.rx_nbytes = 0
         self.timeout = timeout
+        self.ep_in = None
+        self.ep_out = None
 
     def get_endpoint_descriptors(self, ep_addr, str_idx):
         # XXX OUT = 0x00 but is defined as 0x80?
-        self.ep_in = (ep_addr + 2) | EP_IN_FLAG
-        self.ep_out = (ep_addr + 2) & ~EP_IN_FLAG
+        self.ep_in = (ep_addr) | EP_IN_FLAG
+        self.ep_out = (ep_addr) & ~EP_IN_FLAG
         # one IN / OUT Endpoint
         e_out = endpoint_descriptor(self.ep_out, "bulk", 64, 0)
         e_in = endpoint_descriptor(self.ep_in, "bulk", 64, 0)
         return (e_out + e_in, [], (self.ep_out, self.ep_in))
 
     def write(self, data):
-        super().submit_xfer(self.ep_in, data)
+        self.submit_xfer(self.ep_in, data)
 
     def read(self, nbytes=0):
         # XXX PoC.. When returning, it should probably
