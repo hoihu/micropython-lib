@@ -8,6 +8,7 @@ from .utils import (
     endpoint_descriptor,
     EP_IN_FLAG
 )
+from .midi import RingBuf
 from micropython import const
 import ustruct
 import time
@@ -76,12 +77,14 @@ class CDCDataInterface(USBInterface):
         super().__init__(_CDC_ITF_DATA_CLASS, _CDC_ITF_DATA_SUBCLASS,
                          _CDC_ITF_DATA_PROT)
         self.rx_buf = bytearray(256)
-        self.mv_buf = memoryview(self.rx_buf)
-        self.rx_done = False
-        self.rx_nbytes = 0
-        self.timeout = timeout
+        # self.mv_buf = memoryview(self.rx_buf)
+        # self.rx_done = False
+        # self.rx_nbytes = 0
+        # self.timeout = timeout
+        self.rb = RingBuf(256)
         self.ep_in = None
         self.ep_out = None
+        self.read_cd_started = False
 
     def get_endpoint_descriptors(self, ep_addr, str_idx):
         # XXX OUT = 0x00 but is defined as 0x80?
@@ -95,17 +98,25 @@ class CDCDataInterface(USBInterface):
     def write(self, data):
         self.submit_xfer(self.ep_in, data)
 
-    def read(self, nbytes=0):
-        # XXX PoC.. When returning, it should probably
-        # copy it to a ringbuffer instead of leaving it here
-        super().submit_xfer(self.ep_out, self.rx_buf, self._cb_rx)
-        now = time.time()
-        self.rx_done = False
-        self.rx_nbytes = 0
-        while ((time.time() - now) < self.timeout) and not self.rx_done:
-            time.sleep_ms(10)
-        return bytes(self.mv_buf[:self.rx_nbytes]) if self.rx_done else None
+    # read nbytes or until stop char is found
+    def read(self, nbytes=1, stop=None):
+        if self.read_cd_started == False:
+            self._start_rx_cb()
+            self.read_cd_started = True
+        res = bytearray()
+        for i in range(nbytes):
+            nxt = self.rb.get()
+            if nxt == None:
+                break
+            res.append(nxt)
+            if nxt == ord(stop):
+                break
+        return res
+
+    def _start_rx_cb(self):
+        self.submit_xfer(self.ep_out, self.rx_buf, self._cb_rx)
 
     def _cb_rx(self, ep, res, num_bytes):
-        self.rx_done = True
-        self.rx_nbytes = num_bytes
+        for i in range(0, num_bytes):
+            self.rb.put(self.rx_buf[i])
+        self.submit_xfer(self.ep_out, self.rx_buf, self._cb_rx)
