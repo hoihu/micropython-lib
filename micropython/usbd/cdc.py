@@ -100,7 +100,11 @@ class CDCDataInterface(USBInterface):
 
     # read nbytes or until stop char is found
     def read(self, nbytes=1, stop=None):
+
         if self.read_cd_started == False:
+            if self.ep_out == None:
+                # ep_out hasn't been set yet, so we can't start recv'ing
+                return b'' # TODO: better output then just an empty message?
             self._start_rx_cb()
             self.read_cd_started = True
         res = bytearray()
