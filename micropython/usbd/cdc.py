@@ -8,7 +8,9 @@ from .utils import (
     endpoint_descriptor,
     EP_IN_FLAG
 )
+
 from .midi import RingBuf
+
 from micropython import const
 import ustruct
 import time
@@ -46,6 +48,7 @@ class CDCControlInterface(USBInterface):
         super().__init__(_CDC_ITF_CONTROL_CLASS, _CDC_ITF_CONTROL_SUBCLASS,
                          _CDC_ITF_CONTROL_PROT)
         self.ep_in = None
+
 
     def get_itf_descriptor(self, num_eps, itf_idx, str_idx):
         # CDC needs a Interface Association Descriptor (IAD)
@@ -90,6 +93,7 @@ class CDCDataInterface(USBInterface):
         # XXX OUT = 0x00 but is defined as 0x80?
         self.ep_in = (ep_addr) | EP_IN_FLAG
         self.ep_out = (ep_addr) & ~EP_IN_FLAG
+
         # one IN / OUT Endpoint
         e_out = endpoint_descriptor(self.ep_out, "bulk", 64, 0)
         e_in = endpoint_descriptor(self.ep_in, "bulk", 64, 0)
