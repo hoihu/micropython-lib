@@ -100,6 +100,9 @@ class CDCDataInterface(USBInterface):
         return (e_out + e_in, [], (self.ep_out, self.ep_in))
 
     def write(self, data):
+        # we are just going to ignore any sends before it's time
+        if self.ep_in == None:
+            return
         self.submit_xfer(self.ep_in, data)
 
     # read nbytes or until stop char is found
